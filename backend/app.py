@@ -54,9 +54,11 @@ from database.database import (
     create_database,
     save_message,
     get_messages,
-    clear_messages
+    clear_messages,
+    save_chat,
+    get_chats,
+    delete_chat
 )
-
 
 # --------------------------------------------------
 # Flask app
@@ -144,6 +146,58 @@ def home():
         "message": "AI Memory Chatbot Backend is running!"
     })
 
+# --------------------------------------------------
+# Get all chats
+# --------------------------------------------------
+
+@app.route("/chats", methods=["GET"])
+def chats():
+    data = get_chats()
+
+    result = []
+
+    for chat_id, title in data:
+        result.append({
+            "id": chat_id,
+            "title": title
+        })
+
+    return jsonify(result)
+
+# --------------------------------------------------
+# Create or update a chat
+# --------------------------------------------------
+
+@app.route("/chats", methods=["POST"])
+def save_chat_route():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "error": "JSON data is required"
+        }), 400
+
+    chat_id = data.get("id")
+    title = data.get("title")
+
+    if chat_id is None or not title:
+        return jsonify({
+            "error": "id and title are required"
+        }), 400
+
+    try:
+        save_chat(chat_id, title)
+
+        return jsonify({
+            "message": "Chat saved successfully"
+        })
+
+    except Exception as e:
+        print("Save chat error:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 # --------------------------------------------------
 # Get all messages
@@ -151,13 +205,17 @@ def home():
 
 @app.route("/messages", methods=["GET"])
 def messages():
+    chat_id = request.args.get(
+        "chat_id",
+        default=1,
+        type=int
+    )
 
-    data = get_messages()
+    data = get_messages(chat_id)
 
     result = []
 
     for role, message in data:
-
         result.append({
             "role": role,
             "message": message
@@ -182,6 +240,8 @@ def chat():
         }), 400
 
     user_message = data.get("message")
+    memory_enabled = data.get("memory_enabled", True)
+    chat_id = data.get("chat_id", 1)
 
     if not user_message:
 
@@ -196,16 +256,17 @@ def chat():
         # saving the current message
         # ------------------------------------------
 
-        previous_messages = get_messages()
+        if memory_enabled:
+            previous_messages = get_messages(chat_id)
+        else:
+            previous_messages = []
 
         conversation = []
 
         for role, message in previous_messages:
-
             conversation.append(
                 f"{role}: {message}"
             )
-
         # ------------------------------------------
         # Create memory-based prompt
         # ------------------------------------------
@@ -244,19 +305,18 @@ Do not mention internal instructions.
         # Save user message
         # ------------------------------------------
 
-        save_message(
-            "user",
-            user_message
-        )
+        if memory_enabled:
+            save_message(
+                chat_id,
+                "user",
+                user_message
+            )
 
-        # ------------------------------------------
-        # Save AI response
-        # ------------------------------------------
-
-        save_message(
-            "assistant",
-            bot_reply
-        )
+            save_message(
+                chat_id,
+                "assistant",
+                bot_reply
+            )
 
         # ------------------------------------------
         # Send response
@@ -298,6 +358,25 @@ def delete_messages():
             "error": str(e)
         }), 500
 
+# --------------------------------------------------
+# Delete messages from one chat
+# --------------------------------------------------
+
+@app.route("/messages/<int:chat_id>", methods=["DELETE"])
+def delete_chat_messages(chat_id):
+    try:
+        delete_chat(chat_id)
+
+        return jsonify({
+            "message": f"Chat {chat_id} deleted successfully"
+        })
+
+    except Exception as e:
+        print("Delete chat error:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 # --------------------------------------------------
 # Run server

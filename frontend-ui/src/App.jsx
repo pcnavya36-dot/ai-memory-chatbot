@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Plus,
@@ -125,46 +125,193 @@ function App() {
 
   const [copiedId, setCopiedId] = useState(null);
 
+  /* ================================
+   LOAD SAVED CHATS
+================================= */
+
+useEffect(() => {
+  const loadChats = async () => {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/chats"
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load chats");
+      }
+
+      const data = await response.json();
+
+      if (data.length > 0) {
+        const savedChats = data.map((chat) => ({
+          id: chat.id,
+          title: chat.title,
+          time: "Today",
+          pinned: false,
+        }));
+
+        setChats(savedChats);
+      }
+    } catch (error) {
+      console.error("Failed to load chats:", error);
+    }
+  };
+
+  loadChats();
+}, []);
+    /* ================================
+     LOAD SAVED MESSAGES
+  ================================= */
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:5000/messages?chat_id=${activeChat}`
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to load messages");
+        }
+
+        const data = await response.json();
+
+        const savedMessages = data.map((item, index) => ({
+          id: index + 1,
+          role: item.role,
+          text: item.message,
+          time: "",
+        }));
+
+        setMessages(savedMessages);
+      } catch (error) {
+        console.error(
+          "Failed to load saved messages:",
+          error
+        );
+      }
+    };
+
+    loadMessages();
+  }, [activeChat]);
+
 
   /* ================================
      SEND MESSAGE
   ================================= */
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
+  const text = message.trim();
 
-    const text = message.trim();
+  if (!text) return;
+  // Automatically rename a new conversation
+setChats((prev) =>
+  prev.map((chat) =>
+    chat.id === activeChat &&
+    chat.title === "New conversation"
+      ? {
+          ...chat,
+          title:
+            text.length > 30
+              ? text.slice(0, 30) + "..."
+              : text,
+        }
+      : chat
+  )
+);
+const currentChat = chats.find(
+  (chat) => chat.id === activeChat
+);
 
-    if (!text) return;
+if (
+  currentChat &&
+  currentChat.title === "New conversation"
+) {
+  const newTitle =
+    text.length > 30
+      ? text.slice(0, 30) + "..."
+      : text;
 
-    const time = new Date().toLocaleTimeString([], {
+  try {
+    await fetch(
+      "http://127.0.0.1:5000/chats",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: activeChat,
+          title: newTitle,
+        }),
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save chat title:",
+      error
+    );
+  }
+}
+
+  const userMessage = {
+    id: Date.now(),
+    role: "user",
+    text: text,
+    time: new Date().toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
-    });
+    }),
+  };
 
-    const userMessage = {
-      id: Date.now(),
-      role: "user",
-      text: text,
-      time: time,
-    };
+  // Show user's message immediately
+  setMessages((prev) => [...prev, userMessage]);
 
+  // Clear input
+  setMessage("");
+
+  try {
+    // Send message to Flask backend
+    const response = await fetch(
+      "http://127.0.0.1:5000/chat",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: text,
+          memory_enabled: memoryOn,
+          chat_id: activeChat,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Backend error"
+      );
+    }
+
+    // Real AI response
     const assistantMessage = {
       id: Date.now() + 1,
       role: "assistant",
-      text:
-        `I understand your message. ${aiMode} mode is active. ` +
-        `Once the backend is connected, the real AI response will appear here.`,
-      time: time,
+      text: data.reply,
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     };
 
     setMessages((prev) => [
       ...prev,
-      userMessage,
       assistantMessage,
     ]);
 
-    setMessage("");
-
+    // Rename new conversation
     const currentChat = chats.find(
       (chat) => chat.id === activeChat
     );
@@ -187,14 +334,74 @@ function App() {
         )
       );
     }
-  };
 
+  } catch (error) {
+    console.error("Backend connection error:", error);
+
+    const errorMessage = {
+      id: Date.now() + 1,
+      role: "assistant",
+      text:
+        "Sorry, I couldn't connect to the backend. Please make sure the Flask server is running.",
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+
+    setMessages((prev) => [
+      ...prev,
+      errorMessage,
+    ]);
+  }
+};
+
+/* ================================
+   CLEAR MEMORY
+================================= */
+
+const clearMemory = async () => {
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:5000/messages",
+      {
+        method: "DELETE",
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Failed to clear memory"
+      );
+    }
+
+    // Clear messages from frontend also
+    setMessages([]);
+
+    // Close memory popup
+    setShowMemory(false);
+
+    alert("Memory cleared successfully!");
+
+  } catch (error) {
+    console.error(
+      "Clear memory error:",
+      error
+    );
+
+    alert(
+      "Could not clear memory. Make sure backend is running."
+    );
+  }
+};
 
   /* ================================
      NEW CHAT
   ================================= */
 
-  const newChat = () => {
+  const newChat = async () => {
 
     const id = Date.now();
 
@@ -204,6 +411,28 @@ function App() {
       time: "Today",
       pinned: false,
     };
+    try {
+  const response = await fetch(
+    "http://127.0.0.1:5000/chats",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: id,
+        title: "New conversation",
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to save new chat");
+  }
+} catch (error) {
+  console.error("Failed to save new chat:", error);
+  return;
+}
 
     setChats((prev) => [
       newConversation,
@@ -230,7 +459,7 @@ function App() {
 
     setActiveChat(id);
 
-    setMessages([]);
+    
 
     setShowChatMenu(null);
   };
@@ -240,11 +469,31 @@ function App() {
      DELETE CHAT
   ================================= */
 
-  const deleteChat = (id) => {
-
-    const remaining = chats.filter(
-      (chat) => chat.id !== id
+  const deleteChat = async (id) => {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:5000/messages/${id}`,
+      {
+        method: "DELETE",
+      }
     );
+
+    if (!response.ok) {
+      throw new Error("Failed to delete chat");
+    }
+  } catch (error) {
+    console.error("Failed to delete chat:", error);
+    return;
+  }
+
+  const remaining = chats.filter(
+    (chat) => chat.id !== id
+  );
+
+  // existing code continues...
+  // existing code continues...
+
+   
 
     setShowChatMenu(null);
 
@@ -1500,16 +1749,13 @@ function App() {
                 SAVED INFORMATION
               </p>
 
-
               <div className="memory-item">
 
                 <span>
                   📚
                 </span>
 
-
                 <div>
-
                   <strong>
                     Learning preferences
                   </strong>
@@ -1517,14 +1763,10 @@ function App() {
                   <p>
                     Prefers simple explanations
                   </p>
-
                 </div>
 
-
                 <button>
-
                   <Trash2 size={15} />
-
                 </button>
 
               </div>
@@ -1536,9 +1778,7 @@ function App() {
                   💻
                 </span>
 
-
                 <div>
-
                   <strong>
                     Programming
                   </strong>
@@ -1547,17 +1787,22 @@ function App() {
                     Interested in Python and
                     AI projects
                   </p>
-
                 </div>
 
-
                 <button>
-
                   <Trash2 size={15} />
-
                 </button>
 
               </div>
+
+
+              <button
+                className="clear-memory-button"
+                onClick={clearMemory}
+              >
+                <Trash2 size={16} />
+                Clear all memory
+              </button>
 
             </div>
 
