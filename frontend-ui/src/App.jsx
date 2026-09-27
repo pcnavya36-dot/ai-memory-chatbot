@@ -129,39 +129,39 @@ function App() {
    LOAD SAVED CHATS
 ================================= */
 
-useEffect(() => {
-  const loadChats = async () => {
-    try {
-      const response = await fetch(
-        "http://127.0.0.1:5000/chats"
-      );
+  useEffect(() => {
+    const loadChats = async () => {
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:5000/chats"
+        );
 
-      if (!response.ok) {
-        throw new Error("Failed to load chats");
+        if (!response.ok) {
+          throw new Error("Failed to load chats");
+        }
+
+        const data = await response.json();
+
+        if (data.length > 0) {
+          const savedChats = data.map((chat) => ({
+            id: chat.id,
+            title: chat.title,
+            time: "Today",
+            pinned: false,
+          }));
+
+          setChats(savedChats);
+        }
+      } catch (error) {
+        console.error("Failed to load chats:", error);
       }
+    };
 
-      const data = await response.json();
-
-      if (data.length > 0) {
-        const savedChats = data.map((chat) => ({
-          id: chat.id,
-          title: chat.title,
-          time: "Today",
-          pinned: false,
-        }));
-
-        setChats(savedChats);
-      }
-    } catch (error) {
-      console.error("Failed to load chats:", error);
-    }
-  };
-
-  loadChats();
-}, []);
-    /* ================================
-     LOAD SAVED MESSAGES
-  ================================= */
+    loadChats();
+  }, []);
+  /* ================================
+   LOAD SAVED MESSAGES
+================================= */
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -201,117 +201,24 @@ useEffect(() => {
   ================================= */
 
   const sendMessage = async () => {
-  const text = message.trim();
+    const text = message.trim();
 
-  if (!text) return;
-  // Automatically rename a new conversation
-setChats((prev) =>
-  prev.map((chat) =>
-    chat.id === activeChat &&
-    chat.title === "New conversation"
-      ? {
-          ...chat,
-          title:
-            text.length > 30
-              ? text.slice(0, 30) + "..."
-              : text,
-        }
-      : chat
-  )
-);
-const currentChat = chats.find(
-  (chat) => chat.id === activeChat
-);
-
-if (
-  currentChat &&
-  currentChat.title === "New conversation"
-) {
-  const newTitle =
-    text.length > 30
-      ? text.slice(0, 30) + "..."
-      : text;
-
-  try {
-    await fetch(
-      "http://127.0.0.1:5000/chats",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: activeChat,
-          title: newTitle,
-        }),
-      }
+    if (!text) return;
+    // Automatically rename a new conversation
+    setChats((prev) =>
+      prev.map((chat) =>
+        chat.id === activeChat &&
+          chat.title === "New conversation"
+          ? {
+            ...chat,
+            title:
+              text.length > 30
+                ? text.slice(0, 30) + "..."
+                : text,
+          }
+          : chat
+      )
     );
-  } catch (error) {
-    console.error(
-      "Failed to save chat title:",
-      error
-    );
-  }
-}
-
-  const userMessage = {
-    id: Date.now(),
-    role: "user",
-    text: text,
-    time: new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-  };
-
-  // Show user's message immediately
-  setMessages((prev) => [...prev, userMessage]);
-
-  // Clear input
-  setMessage("");
-
-  try {
-    // Send message to Flask backend
-    const response = await fetch(
-      "http://127.0.0.1:5000/chat",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: text,
-          memory_enabled: memoryOn,
-          chat_id: activeChat,
-        }),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.error || "Backend error"
-      );
-    }
-
-    // Real AI response
-    const assistantMessage = {
-      id: Date.now() + 1,
-      role: "assistant",
-      text: data.reply,
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-
-    setMessages((prev) => [
-      ...prev,
-      assistantMessage,
-    ]);
-
-    // Rename new conversation
     const currentChat = chats.find(
       (chat) => chat.id === activeChat
     );
@@ -320,82 +227,175 @@ if (
       currentChat &&
       currentChat.title === "New conversation"
     ) {
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === activeChat
-            ? {
-                ...chat,
-                title:
-                  text.length > 28
-                    ? text.slice(0, 28) + "..."
-                    : text,
-              }
-            : chat
-        )
-      );
+      const newTitle =
+        text.length > 30
+          ? text.slice(0, 30) + "..."
+          : text;
+
+      try {
+        await fetch(
+          "http://127.0.0.1:5000/chats",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: activeChat,
+              title: newTitle,
+            }),
+          }
+        );
+      } catch (error) {
+        console.error(
+          "Failed to save chat title:",
+          error
+        );
+      }
     }
 
-  } catch (error) {
-    console.error("Backend connection error:", error);
-
-    const errorMessage = {
-      id: Date.now() + 1,
-      role: "assistant",
-      text:
-        "Sorry, I couldn't connect to the backend. Please make sure the Flask server is running.",
+    const userMessage = {
+      id: Date.now(),
+      role: "user",
+      text: text,
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }),
     };
 
-    setMessages((prev) => [
-      ...prev,
-      errorMessage,
-    ]);
-  }
-};
+    // Show user's message immediately
+    setMessages((prev) => [...prev, userMessage]);
 
-/* ================================
-   CLEAR MEMORY
-================================= */
+    // Clear input
+    setMessage("");
 
-const clearMemory = async () => {
-  try {
-    const response = await fetch(
-      "http://127.0.0.1:5000/messages",
-      {
-        method: "DELETE",
+    try {
+      // Send message to Flask backend
+      const response = await fetch(
+        "http://127.0.0.1:5000/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: text,
+            memory_enabled: memoryOn,
+            chat_id: activeChat,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Backend error"
+        );
       }
-    );
 
-    const data = await response.json();
+      // Real AI response
+      const assistantMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        text: data.reply,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
 
-    if (!response.ok) {
-      throw new Error(
-        data.error || "Failed to clear memory"
+      setMessages((prev) => [
+        ...prev,
+        assistantMessage,
+      ]);
+
+      // Rename new conversation
+      const currentChat = chats.find(
+        (chat) => chat.id === activeChat
+      );
+
+      if (
+        currentChat &&
+        currentChat.title === "New conversation"
+      ) {
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === activeChat
+              ? {
+                ...chat,
+                title:
+                  text.length > 28
+                    ? text.slice(0, 28) + "..."
+                    : text,
+              }
+              : chat
+          )
+        );
+      }
+
+    } catch (error) {
+      console.error("Backend connection error:", error);
+
+      const errorMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        text:
+          "Sorry, I couldn't connect to the backend. Please make sure the Flask server is running.",
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+
+      setMessages((prev) => [
+        ...prev,
+        errorMessage,
+      ]);
+    }
+  };
+
+  /* ================================
+     CLEAR MEMORY
+  ================================= */
+
+  const clearMemory = async () => {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/messages",
+        {
+          method: "DELETE",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to clear memory"
+        );
+      }
+
+      // Clear messages from frontend also
+      setMessages([]);
+
+      // Close memory popup
+      setShowMemory(false);
+
+      alert("Memory cleared successfully!");
+
+    } catch (error) {
+      console.error(
+        "Clear memory error:",
+        error
+      );
+
+      alert(
+        "Could not clear memory. Make sure backend is running."
       );
     }
-
-    // Clear messages from frontend also
-    setMessages([]);
-
-    // Close memory popup
-    setShowMemory(false);
-
-    alert("Memory cleared successfully!");
-
-  } catch (error) {
-    console.error(
-      "Clear memory error:",
-      error
-    );
-
-    alert(
-      "Could not clear memory. Make sure backend is running."
-    );
-  }
-};
+  };
 
   /* ================================
      NEW CHAT
@@ -412,27 +412,27 @@ const clearMemory = async () => {
       pinned: false,
     };
     try {
-  const response = await fetch(
-    "http://127.0.0.1:5000/chats",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        id: id,
-        title: "New conversation",
-      }),
-    }
-  );
+      const response = await fetch(
+        "http://127.0.0.1:5000/chats",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: id,
+            title: "New conversation",
+          }),
+        }
+      );
 
-  if (!response.ok) {
-    throw new Error("Failed to save new chat");
-  }
-} catch (error) {
-  console.error("Failed to save new chat:", error);
-  return;
-}
+      if (!response.ok) {
+        throw new Error("Failed to save new chat");
+      }
+    } catch (error) {
+      console.error("Failed to save new chat:", error);
+      return;
+    }
 
     setChats((prev) => [
       newConversation,
@@ -459,7 +459,7 @@ const clearMemory = async () => {
 
     setActiveChat(id);
 
-    
+
 
     setShowChatMenu(null);
   };
@@ -470,30 +470,30 @@ const clearMemory = async () => {
   ================================= */
 
   const deleteChat = async (id) => {
-  try {
-    const response = await fetch(
-      `http://127.0.0.1:5000/messages/${id}`,
-      {
-        method: "DELETE",
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:5000/messages/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete chat");
       }
+    } catch (error) {
+      console.error("Failed to delete chat:", error);
+      return;
+    }
+
+    const remaining = chats.filter(
+      (chat) => chat.id !== id
     );
 
-    if (!response.ok) {
-      throw new Error("Failed to delete chat");
-    }
-  } catch (error) {
-    console.error("Failed to delete chat:", error);
-    return;
-  }
+    // existing code continues...
+    // existing code continues...
 
-  const remaining = chats.filter(
-    (chat) => chat.id !== id
-  );
 
-  // existing code continues...
-  // existing code continues...
-
-   
 
     setShowChatMenu(null);
 
@@ -542,24 +542,49 @@ const clearMemory = async () => {
   };
 
 
-  const saveRename = (id) => {
+  const saveRename = async (id) => {
+    const newTitle = editTitle.trim();
 
-    if (!editTitle.trim()) return;
+    if (!newTitle) return;
 
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === id
-          ? {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/chats",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: id,
+            title: newTitle,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to save renamed chat");
+      }
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === id
+            ? {
               ...chat,
-              title: editTitle.trim(),
+              title: newTitle,
             }
-          : chat
-      )
-    );
+            : chat
+        )
+      );
 
-    setEditingChat(null);
-
-    setEditTitle("");
+      setEditingChat(null);
+      setEditTitle("");
+    } catch (error) {
+      console.error(
+        "Failed to rename chat:",
+        error
+      );
+    }
   };
 
 
@@ -573,9 +598,9 @@ const clearMemory = async () => {
       prev.map((chat) =>
         chat.id === id
           ? {
-              ...chat,
-              pinned: !chat.pinned,
-            }
+            ...chat,
+            pinned: !chat.pinned,
+          }
           : chat
       )
     );
@@ -669,10 +694,9 @@ const clearMemory = async () => {
 
       <aside
         className={
-          `sidebar ${
-            sidebarOpen
-              ? "open"
-              : "closed"
+          `sidebar ${sidebarOpen
+            ? "open"
+            : "closed"
           }`
         }
       >
@@ -761,10 +785,9 @@ const clearMemory = async () => {
 
                 <div
                   className={
-                    `chat-item-wrapper ${
-                      activeChat === chat.id
-                        ? "active"
-                        : ""
+                    `chat-item-wrapper ${activeChat === chat.id
+                      ? "active"
+                      : ""
                     }`
                   }
                   key={chat.id}
@@ -880,64 +903,64 @@ const clearMemory = async () => {
                       {showChatMenu ===
                         chat.id && (
 
-                        <div className="chat-menu">
+                          <div className="chat-menu">
 
-                          <button
-                            onClick={() =>
-                              renameChat(
-                                chat
-                              )
-                            }
-                          >
+                            <button
+                              onClick={() =>
+                                renameChat(
+                                  chat
+                                )
+                              }
+                            >
 
-                            <Pencil
-                              size={14}
-                            />
+                              <Pencil
+                                size={14}
+                              />
 
-                            Rename
+                              Rename
 
-                          </button>
-
-
-                          <button
-                            onClick={() =>
-                              togglePin(
-                                chat.id
-                              )
-                            }
-                          >
-
-                            <Pin
-                              size={14}
-                            />
-
-                            {chat.pinned
-                              ? "Unpin"
-                              : "Pin"}
-
-                          </button>
+                            </button>
 
 
-                          <button
-                            className="delete-option"
-                            onClick={() =>
-                              deleteChat(
-                                chat.id
-                              )
-                            }
-                          >
+                            <button
+                              onClick={() =>
+                                togglePin(
+                                  chat.id
+                                )
+                              }
+                            >
 
-                            <Trash2
-                              size={14}
-                            />
+                              <Pin
+                                size={14}
+                              />
 
-                            Delete
+                              {chat.pinned
+                                ? "Unpin"
+                                : "Pin"}
 
-                          </button>
+                            </button>
 
-                        </div>
 
-                      )}
+                            <button
+                              className="delete-option"
+                              onClick={() =>
+                                deleteChat(
+                                  chat.id
+                                )
+                              }
+                            >
+
+                              <Trash2
+                                size={14}
+                              />
+
+                              Delete
+
+                            </button>
+
+                          </div>
+
+                        )}
 
                     </div>
 
@@ -1023,10 +1046,9 @@ const clearMemory = async () => {
 
             <div
               className={
-                `status-dot ${
-                  memoryOn
-                    ? "active"
-                    : ""
+                `status-dot ${memoryOn
+                  ? "active"
+                  : ""
                 }`
               }
               title={
@@ -1355,10 +1377,9 @@ const clearMemory = async () => {
 
                 <div
                   className={
-                    `message-row ${
-                      msg.role === "user"
-                        ? "user-row"
-                        : ""
+                    `message-row ${msg.role === "user"
+                      ? "user-row"
+                      : ""
                     }`
                   }
                   key={msg.id}
@@ -1366,17 +1387,16 @@ const clearMemory = async () => {
 
                   <div
                     className={
-                      `avatar ${
-                        msg.role ===
+                      `avatar ${msg.role ===
                         "assistant"
-                          ? "ai-avatar"
-                          : "user-avatar"
+                        ? "ai-avatar"
+                        : "user-avatar"
                       }`
                     }
                   >
 
                     {msg.role ===
-                    "assistant" ? (
+                      "assistant" ? (
                       <Sparkles size={16} />
                     ) : (
                       "D"
@@ -1390,7 +1410,7 @@ const clearMemory = async () => {
                     <div className="message-name">
 
                       {msg.role ===
-                      "assistant"
+                        "assistant"
                         ? "MemoryAI"
                         : "You"}
 
@@ -1409,66 +1429,66 @@ const clearMemory = async () => {
                     {msg.role ===
                       "assistant" && (
 
-                      <div className="message-tools">
+                        <div className="message-tools">
 
-                        <button
-                          onClick={() =>
-                            copyMessage(
-                              msg.text,
+                          <button
+                            onClick={() =>
+                              copyMessage(
+                                msg.text,
+                                msg.id
+                              )
+                            }
+                          >
+
+                            {copiedId ===
+                              msg.id ? (
+                              <Check
+                                size={13}
+                              />
+                            ) : (
+                              <Copy
+                                size={13}
+                              />
+                            )}
+
+                            {copiedId ===
                               msg.id
-                            )
-                          }
-                        >
+                              ? "Copied"
+                              : "Copy"}
 
-                          {copiedId ===
-                          msg.id ? (
-                            <Check
+                          </button>
+
+
+                          <button>
+
+                            <RotateCcw
                               size={13}
                             />
-                          ) : (
-                            <Copy
+
+                            Regenerate
+
+                          </button>
+
+
+                          <button
+                            onClick={() =>
+                              readAloud(
+                                msg.text
+                              )
+                            }
+                          >
+
+                            <Volume2
                               size={13}
                             />
-                          )}
 
-                          {copiedId ===
-                          msg.id
-                            ? "Copied"
-                            : "Copy"}
+                            Read aloud
 
-                        </button>
+                          </button>
 
+                        </div>
 
-                        <button>
-
-                          <RotateCcw
-                            size={13}
-                          />
-
-                          Regenerate
-
-                        </button>
-
-
-                        <button
-                          onClick={() =>
-                            readAloud(
-                              msg.text
-                            )
-                          }
-                        >
-
-                          <Volume2
-                            size={13}
-                          />
-
-                          Read aloud
-
-                        </button>
-
-                      </div>
-
-                    )}
+                      )}
 
                   </div>
 
@@ -1582,86 +1602,86 @@ const clearMemory = async () => {
           PROFILE MENU
       ================================= */}
 
-{showProfile && (
-  <div className="profile-menu">
+      {showProfile && (
+        <div className="profile-menu">
 
-    <div className="profile-menu-header">
-      <div className="large-profile-avatar">
-        <User size={18} />
-      </div>
+          <div className="profile-menu-header">
+            <div className="large-profile-avatar">
+              <User size={18} />
+            </div>
 
-      <div>
-        <strong>
-          {loggedIn ? "Deepika" : "Guest Mode"}
-        </strong>
+            <div>
+              <strong>
+                {loggedIn ? "Deepika" : "Guest Mode"}
+              </strong>
 
-        <span>
-          {loggedIn
-            ? "Personal account"
-            : "You are not signed in"}
-        </span>
-      </div>
-    </div>
+              <span>
+                {loggedIn
+                  ? "Personal account"
+                  : "You are not signed in"}
+              </span>
+            </div>
+          </div>
 
-    <div className="profile-divider" />
+          <div className="profile-divider" />
 
-    {/* 1. Guest Mode */}
-    <button
-      className="profile-option"
-      onClick={() => {
-        setLoggedIn(false);
-        setShowProfile(false);
-      }}
-    >
-      <User size={15} />
-      <span>Guest Mode</span>
-    </button>
+          {/* 1. Guest Mode */}
+          <button
+            className="profile-option"
+            onClick={() => {
+              setLoggedIn(false);
+              setShowProfile(false);
+            }}
+          >
+            <User size={15} />
+            <span>Guest Mode</span>
+          </button>
 
-    {/* 2. Sign In */}
-    {!loggedIn && (
-      <button
-        className="profile-option"
-        onClick={() => {
-          setAuthMode("login");
-          setShowAuth(true);
-          setShowProfile(false);
-        }}
-      >
-        <LogOut size={15} />
-        <span>Sign in</span>
-      </button>
-    )}
+          {/* 2. Sign In */}
+          {!loggedIn && (
+            <button
+              className="profile-option"
+              onClick={() => {
+                setAuthMode("login");
+                setShowAuth(true);
+                setShowProfile(false);
+              }}
+            >
+              <LogOut size={15} />
+              <span>Sign in</span>
+            </button>
+          )}
 
-    {/* 3. Sign Out */}
-    {loggedIn && (
-      <button
-        className="profile-option"
-        onClick={() => {
-          setLoggedIn(false);
-          setShowProfile(false);
-        }}
-      >
-        <LogOut size={15} />
-        <span>Sign out</span>
-      </button>
-    )}
+          {/* 3. Sign Out */}
+          {loggedIn && (
+            <button
+              className="profile-option"
+              onClick={() => {
+                setLoggedIn(false);
+                setShowProfile(false);
+              }}
+            >
+              <LogOut size={15} />
+              <span>Sign out</span>
+            </button>
+          )}
 
-    {/* 4. Switch Account */}
-    <button
-      className="profile-option"
-      onClick={() => {
-        setLoggedIn(false);
-        setAuthMode("login");
-        setShowAuth(true);
-        setShowProfile(false);
-      }}
-    >
-      <User size={15} />
-      <span>Switch to another account</span>
-    </button>
+          {/* 4. Switch Account */}
+          <button
+            className="profile-option"
+            onClick={() => {
+              setLoggedIn(false);
+              setAuthMode("login");
+              setShowAuth(true);
+              setShowProfile(false);
+            }}
+          >
+            <User size={15} />
+            <span>Switch to another account</span>
+          </button>
 
-  </div>
-)}
+        </div>
+      )}
 
       {/* =================================
           MEMORY MODAL
