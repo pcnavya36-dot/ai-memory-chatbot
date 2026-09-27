@@ -1,7 +1,9 @@
-<<<<<<< HEAD
+# Environment variables
 .env
-=======
-.env
+
+# Python cache
 __pycache__/
 *.pyc
->>>>>>> c67ac2dfe21e89e5d425458bbd6c80ee77716aac
+
+# Local SQLite database
+database/chatbot.db
