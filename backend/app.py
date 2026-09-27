@@ -156,10 +156,11 @@ def chats():
 
     result = []
 
-    for chat_id, title in data:
+    for chat_id, title, pinned in data:
         result.append({
             "id": chat_id,
-            "title": title
+            "title": title,
+            "pinned": bool(pinned)
         })
 
     return jsonify(result)
@@ -179,6 +180,7 @@ def save_chat_route():
 
     chat_id = data.get("id")
     title = data.get("title")
+    pinned = data.get("pinned", False)
 
     if chat_id is None or not title:
         return jsonify({
@@ -186,7 +188,11 @@ def save_chat_route():
         }), 400
 
     try:
-        save_chat(chat_id, title)
+        save_chat(
+            chat_id,
+            title,
+            1 if pinned else 0
+        )
 
         return jsonify({
             "message": "Chat saved successfully"

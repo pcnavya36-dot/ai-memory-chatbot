@@ -38,9 +38,24 @@ def create_database():
         CREATE TABLE IF NOT EXISTS chats (
             id INTEGER PRIMARY KEY,
             title TEXT NOT NULL,
+            pinned INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Check existing chats columns
+    cursor.execute("PRAGMA table_info(chats)")
+
+    chat_columns = [
+        column[1]
+        for column in cursor.fetchall()
+    ]
+
+# Add pinned column to old database if missing
+    if "pinned" not in chat_columns:
+        cursor.execute("""
+           ALTER TABLE chats
+           ADD COLUMN pinned INTEGER DEFAULT 0
+        """)
 
     # Add default chats only if chats table is empty
     cursor.execute("SELECT COUNT(*) FROM chats")
@@ -61,16 +76,19 @@ def create_database():
 
     conn.commit()
     conn.close()
-def save_chat(chat_id, title):
+def save_chat(chat_id, title, pinned=0):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        INSERT OR REPLACE INTO chats (id, title)
-        VALUES (?, ?)
+        INSERT INTO chats (id, title, pinned)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            pinned = excluded.pinned
         """,
-        (chat_id, title)
+        (chat_id, title, pinned)
     )
 
     conn.commit()
@@ -82,7 +100,7 @@ def get_chats():
 
     cursor.execute(
         """
-        SELECT id, title
+        SELECT id, title, pinned
         FROM chats
         ORDER BY id
         """
@@ -91,7 +109,6 @@ def get_chats():
     chats = cursor.fetchall()
 
     conn.close()
-
     return chats
 
 def delete_chat(chat_id):

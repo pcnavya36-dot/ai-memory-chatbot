@@ -147,7 +147,7 @@ function App() {
             id: chat.id,
             title: chat.title,
             time: "Today",
-            pinned: false,
+            pinned: chat.pinned,
           }));
 
           setChats(savedChats);
@@ -592,20 +592,55 @@ function App() {
      PIN CHAT
   ================================= */
 
-  const togglePin = (id) => {
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === id
-          ? {
-            ...chat,
-            pinned: !chat.pinned,
-          }
-          : chat
-      )
+  const togglePin = async (id) => {
+    const currentChat = chats.find(
+      (chat) => chat.id === id
     );
 
-    setShowChatMenu(null);
+    if (!currentChat) return;
+
+    const newPinned = !currentChat.pinned;
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/chats",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: currentChat.id,
+            title: currentChat.title,
+            pinned: newPinned,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Failed to save pin status"
+        );
+      }
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === id
+            ? {
+              ...chat,
+              pinned: newPinned,
+            }
+            : chat
+        )
+      );
+
+      setShowChatMenu(null);
+    } catch (error) {
+      console.error(
+        "Failed to update pin status:",
+        error
+      );
+    }
   };
 
 
