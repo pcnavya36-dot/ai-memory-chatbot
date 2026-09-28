@@ -88,16 +88,28 @@ function App() {
   const [memoryOn, setMemoryOn] = useState(true);
 
   const [privateMode, setPrivateMode] = useState(false);
+  const [privateUnlocked, setPrivateUnlocked] = useState(false);
+
+  const [showPrivateLock, setShowPrivateLock] = useState(false);
+
+  const [privatePin, setPrivatePin] = useState("");
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [message, setMessage] = useState("");
 
   const [messages, setMessages] = useState([]);
+  const [isThinking, setIsThinking] = useState(false);
 
   const [chats, setChats] = useState(initialChats);
 
-  const [activeChat, setActiveChat] = useState(1);
+  const [activeChat, setActiveChat] = useState(() => {
+    const savedChat = localStorage.getItem("activeChat");
+
+    return savedChat
+      ? Number(savedChat)
+      : 1;
+  });
 
   const [search, setSearch] = useState("");
 
@@ -119,9 +131,17 @@ function App() {
 
   const [aiMode, setAiMode] = useState("Normal");
 
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(
+    () => localStorage.getItem("loggedIn") === "true"
+  );
 
+  const [userName, setUserName] = useState(
+    () => localStorage.getItem("userName") || ""
+  );
   const [authMode, setAuthMode] = useState("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
 
   const [copiedId, setCopiedId] = useState(null);
 
@@ -132,6 +152,7 @@ function App() {
   useEffect(() => {
     const loadChats = async () => {
       try {
+        setIsThinking(true);
         const response = await fetch(
           "http://127.0.0.1:5000/chats"
         );
@@ -142,18 +163,23 @@ function App() {
 
         const data = await response.json();
 
+
         if (data.length > 0) {
           const savedChats = data.map((chat) => ({
             id: chat.id,
             title: chat.title,
             time: "Today",
             pinned: chat.pinned,
+            isPrivate: chat.is_private,
           }));
 
           setChats(savedChats);
         }
       } catch (error) {
         console.error("Failed to load chats:", error);
+      }
+      finally {
+        setIsThinking(false);
       }
     };
 
@@ -195,6 +221,72 @@ function App() {
     loadMessages();
   }, [activeChat]);
 
+  const handleAuth = async () => {
+    if (!authEmail.trim() || !authPassword) {
+      alert("Enter email and password");
+      return;
+    }
+
+    if (authMode === "signup" && !authName.trim()) {
+      alert("Enter your name");
+      return;
+    }
+
+    try {
+      const endpoint =
+        authMode === "login"
+          ? "login"
+          : "signup";
+
+      const body =
+        authMode === "signup"
+          ? {
+            name: authName.trim(),
+            email: authEmail.trim(),
+            password: authPassword,
+          }
+          : {
+            email: authEmail.trim(),
+            password: authPassword,
+          };
+
+      const response = await fetch(
+        `http://127.0.0.1:5000/${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "Authentication failed");
+        return;
+      }
+
+
+      setLoggedIn(true);
+      setUserName(data.user.name);
+      localStorage.setItem("loggedIn", "true");
+      localStorage.setItem("userName", data.user.name);
+      setShowAuth(false);
+
+      setAuthName("");
+      setAuthEmail("");
+      setAuthPassword("");
+
+      alert(data.message);
+
+    } catch (error) {
+      console.error("Authentication error:", error);
+      alert("Could not connect to backend");
+    }
+  };
+
 
   /* ================================
      SEND MESSAGE
@@ -226,6 +318,7 @@ function App() {
     if (
       currentChat &&
       currentChat.title === "New conversation"
+
     ) {
       const newTitle =
         text.length > 30
@@ -269,6 +362,7 @@ function App() {
 
     // Clear input
     setMessage("");
+    setIsThinking(true);
 
     try {
       // Send message to Flask backend
@@ -283,6 +377,7 @@ function App() {
             message: text,
             memory_enabled: memoryOn,
             chat_id: activeChat,
+            private_mode: privateMode,
           }),
         }
       );
@@ -353,6 +448,8 @@ function App() {
         ...prev,
         errorMessage,
       ]);
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -456,15 +553,19 @@ function App() {
   ================================= */
 
   const selectChat = (id) => {
+    localStorage.setItem("activeChat", id);
+    const selectedChat = chats.find(
+      (chat) => chat.id === id
+    );
 
     setActiveChat(id);
 
-
+    setPrivateMode(
+      selectedChat?.isPrivate || false
+    );
 
     setShowChatMenu(null);
   };
-
-
   /* ================================
      DELETE CHAT
   ================================= */
@@ -642,6 +743,150 @@ function App() {
       );
     }
   };
+  const togglePrivate = async () => {
+    const currentChat = chats.find(
+      (chat) => chat.id === activeChat
+    );
+
+    if (!currentChat) return;
+
+    const newPrivate = !privateMode;
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/chats",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: currentChat.id,
+            title: currentChat.title,
+            is_private: newPrivate,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Failed to save private status"
+        );
+      }
+
+      setPrivateMode(newPrivate);
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === activeChat
+            ? {
+              ...chat,
+              isPrivate: newPrivate,
+            }
+            : chat
+        )
+      );
+
+      setShowMoreMenu(false);
+    } catch (error) {
+      console.error(
+        "Failed to update private status:",
+        error
+      );
+    }
+  };
+
+  const unlockPrivateChats = async () => {
+    const pin = privatePin.trim();
+
+    if (!pin) {
+      alert("Enter your private PIN");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/private-pin/verify",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pin: pin,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "Incorrect PIN");
+        return;
+      }
+
+      setPrivateUnlocked(true);
+      setShowPrivateLock(false);
+      setPrivatePin("");
+
+    } catch (error) {
+      console.error(
+        "Private PIN verification error:",
+        error
+      );
+
+      alert("Could not verify PIN");
+    }
+  };
+  const setupPrivatePin = async () => {
+    const pin = privatePin.trim();
+
+    if (
+      !/^\d{4,8}$/.test(pin)
+    ) {
+      alert("PIN must contain 4 to 8 digits");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/private-pin/setup",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pin: pin,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(
+          data.error ||
+          "Could not create private PIN"
+        );
+        return;
+      }
+
+      setPrivateUnlocked(true);
+      setShowPrivateLock(false);
+      setPrivatePin("");
+
+      alert("Private PIN created successfully");
+
+    } catch (error) {
+      console.error(
+        "Private PIN setup error:",
+        error
+      );
+
+      alert("Could not create private PIN");
+    }
+  };
 
 
   /* ================================
@@ -691,10 +936,25 @@ function App() {
   ================================= */
 
   const filteredChats = chats
-    .filter((chat) =>
-      chat.title
-        .toLowerCase()
-        .includes(search.toLowerCase())
+    .filter(
+      (chat) =>
+        !chat.isPrivate &&
+        chat.title
+          .toLowerCase()
+          .includes(search.toLowerCase())
+    )
+    .sort(
+      (a, b) =>
+        Number(b.pinned) - Number(a.pinned)
+    );
+
+  const privateChats = chats
+    .filter(
+      (chat) =>
+        chat.isPrivate &&
+        chat.title
+          .toLowerCase()
+          .includes(search.toLowerCase())
     )
     .sort(
       (a, b) =>
@@ -1006,6 +1266,54 @@ function App() {
               ))}
 
             </div>
+            <div className="chat-section">
+
+              <button
+                className="section-title"
+                onClick={() => setShowPrivateLock(true)}
+              >
+                🔒 PRIVATE CHATS
+              </button>
+
+              {!privateUnlocked ? (
+                <p className="section-title">
+                  Click Private Chats to unlock
+                </p>
+              ) : privateChats.length === 0 ? (
+                <p className="section-title">
+                  No private chats
+                </p>
+              ) : (
+                privateChats.map((chat) => (
+                  <button
+                    key={chat.id}
+                    className={
+                      `chat-item ${activeChat === chat.id
+                        ? "active"
+                        : ""
+                      }`
+                    }
+                    onClick={() =>
+                      selectChat(chat.id)
+                    }
+                  >
+                    <Lock size={16} />
+
+                    <span>
+                      {chat.title}
+                    </span>
+
+                    {chat.pinned && (
+                      <Pin
+                        size={11}
+                        className="pinned-icon"
+                      />
+                    )}
+                  </button>
+                ))
+              )}
+
+            </div>
 
           </>
         )}
@@ -1126,17 +1434,7 @@ function App() {
 
 
                   <button
-                    onClick={() => {
-
-                      setPrivateMode(
-                        !privateMode
-                      );
-
-                      setShowMoreMenu(
-                        false
-                      );
-
-                    }}
+                    onClick={togglePrivate}
                   >
 
                     <Lock size={15} />
@@ -1530,6 +1828,14 @@ function App() {
                 </div>
 
               ))}
+              {isThinking && (
+                <div className="message-row assistant">
+                  <div className="message assistant-message">
+                    <Sparkles size={16} />
+                    <span>AI is thinking...</span>
+                  </div>
+                </div>
+              )}
 
             </div>
 
@@ -1632,6 +1938,68 @@ function App() {
 
       </main>
 
+      {/* =================================
+    PRIVATE CHAT LOCK
+================================= */}
+
+      {showPrivateLock && (
+        <div className="overlay">
+          <div className="modal">
+
+            <div className="modal-header">
+              <div>
+                <h2>Private Chats</h2>
+                <p>
+                  Enter your PIN to unlock private chats
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowPrivateLock(false);
+                  setPrivatePin("");
+                }}
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <input
+              className="auth-input"
+              type="password"
+              inputMode="numeric"
+              maxLength={8}
+              placeholder="Enter PIN"
+              value={privatePin}
+              onChange={(e) =>
+                setPrivatePin(e.target.value)
+              }
+            />
+
+            <button
+              className="auth-submit"
+              onClick={unlockPrivateChats}
+            >
+              <Lock size={16} />
+              Unlock Private Chats
+            </button>
+            <button
+              type="button"
+              onClick={setupPrivatePin}
+              style={{
+                marginTop: "10px",
+                width: "100%",
+                padding: "10px",
+                cursor: "pointer",
+              }}
+            >
+              First time? Create Private PIN
+            </button>
+
+          </div>
+        </div>
+      )}
+
 
       {/* =================================
           PROFILE MENU
@@ -1647,7 +2015,7 @@ function App() {
 
             <div>
               <strong>
-                {loggedIn ? "Deepika" : "Guest Mode"}
+                {loggedIn ? userName : "Guest Mode"}
               </strong>
 
               <span>
@@ -1665,6 +2033,8 @@ function App() {
             className="profile-option"
             onClick={() => {
               setLoggedIn(false);
+              localStorage.removeItem("loggedIn");
+              localStorage.removeItem("userName");
               setShowProfile(false);
             }}
           >
@@ -1966,11 +2336,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={privateMode}
-                  onChange={() =>
-                    setPrivateMode(
-                      !privateMode
-                    )
-                  }
+                  onChange={togglePrivate}
                 />
 
                 <span></span>
@@ -2110,33 +2476,43 @@ function App() {
                 : "Create an account to keep your conversations and preferences."}
 
             </p>
+            {authMode === "signup" && (
+              <input
+                className="auth-input"
+                type="text"
+                placeholder="Your name"
+                value={authName}
+                onChange={(e) =>
+                  setAuthName(e.target.value)
+                }
+              />
+            )}
 
 
             <input
               className="auth-input"
               type="email"
               placeholder="Email address"
+              value={authEmail}
+              onChange={(e) =>
+                setAuthEmail(e.target.value)
+              }
             />
-
 
             <input
               className="auth-input"
               type="password"
               placeholder="Password"
+              value={authPassword}
+              onChange={(e) =>
+                setAuthPassword(e.target.value)
+              }
             />
-
 
             <button
               className="auth-submit"
-              onClick={() => {
-
-                setLoggedIn(true);
-
-                setShowAuth(false);
-
-              }}
+              onClick={handleAuth}
             >
-
               {authMode === "login"
                 ? "Login"
                 : "Create account"}

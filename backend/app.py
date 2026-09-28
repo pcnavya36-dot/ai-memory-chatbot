@@ -1,9 +1,11 @@
 import os
 import sys
 import time
+import re
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from google import genai
 
@@ -57,7 +59,13 @@ from database.database import (
     clear_messages,
     save_chat,
     get_chats,
-    delete_chat
+    delete_chat,
+    save_private_pin,
+    get_private_pin,
+    save_memory,
+    get_memories,
+    create_user,
+    get_user_by_email,
 )
 
 # --------------------------------------------------
@@ -145,7 +153,105 @@ def home():
     return jsonify({
         "message": "AI Memory Chatbot Backend is running!"
     })
+@app.route("/signup", methods=["POST"])
+def signup():
+    data = request.get_json()
 
+    if not data:
+        return jsonify({"error": "JSON data is required"}), 400
+
+    name = str(data.get("name", "")).strip()
+    email = str(data.get("email", "")).strip().lower()
+    password = str(data.get("password", ""))
+
+    if not name or not email or not password:
+        return jsonify({
+            "error": "Name, email and password are required"
+        }), 400
+
+    if len(password) < 6:
+        return jsonify({
+            "error": "Password must be at least 6 characters"
+        }), 400
+
+    existing_user = get_user_by_email(email)
+
+    if existing_user:
+        return jsonify({
+            "error": "Email is already registered"
+        }), 409
+
+    try:
+        password_hash = generate_password_hash(password)
+
+        user_id = create_user(
+            name,
+            email,
+            password_hash
+        )
+
+        return jsonify({
+            "message": "Account created successfully",
+            "user": {
+                "id": user_id,
+                "name": name,
+                "email": email
+            }
+        }), 201
+
+    except Exception as e:
+        print("Signup error:", e)
+
+        return jsonify({
+            "error": "Could not create account"
+        }), 500
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "error": "JSON data is required"
+        }), 400
+
+    email = str(
+        data.get("email", "")
+    ).strip().lower()
+
+    password = str(
+        data.get("password", "")
+    )
+
+    if not email or not password:
+        return jsonify({
+            "error": "Email and password are required"
+        }), 400
+
+    user = get_user_by_email(email)
+
+    if not user:
+        return jsonify({
+            "error": "Invalid email or password"
+        }), 401
+
+    user_id, name, saved_email, password_hash = user
+
+    if not check_password_hash(
+        password_hash,
+        password
+    ):
+        return jsonify({
+            "error": "Invalid email or password"
+        }), 401
+
+    return jsonify({
+        "message": "Login successful",
+        "user": {
+            "id": user_id,
+            "name": name,
+            "email": saved_email
+        }
+    })
 # --------------------------------------------------
 # Get all chats
 # --------------------------------------------------
@@ -156,15 +262,15 @@ def chats():
 
     result = []
 
-    for chat_id, title, pinned in data:
+    for chat_id, title, pinned, is_private in data:
         result.append({
             "id": chat_id,
             "title": title,
-            "pinned": bool(pinned)
+            "pinned": bool(pinned),
+            "is_private": bool(is_private)
         })
 
     return jsonify(result)
-
 # --------------------------------------------------
 # Create or update a chat
 # --------------------------------------------------
@@ -180,7 +286,8 @@ def save_chat_route():
 
     chat_id = data.get("id")
     title = data.get("title")
-    pinned = data.get("pinned", False)
+    pinned = data.get("pinned")
+    is_private = data.get("is_private")
 
     if chat_id is None or not title:
         return jsonify({
@@ -191,7 +298,10 @@ def save_chat_route():
         save_chat(
             chat_id,
             title,
-            1 if pinned else 0
+            None if pinned is None
+            else (1 if pinned else 0),
+            None if is_private is None
+            else (1 if is_private else 0)
         )
 
         return jsonify({
@@ -233,7 +343,87 @@ def messages():
 # --------------------------------------------------
 # Chat with Gemini
 # --------------------------------------------------
+@app.route("/private-pin/setup", methods=["POST"])
+def setup_private_pin():
+    data = request.get_json()
 
+    if not data:
+        return jsonify({
+            "error": "JSON data is required"
+        }), 400
+
+    pin = str(data.get("pin", "")).strip()
+
+    if not pin.isdigit() or len(pin) < 4 or len(pin) > 8:
+        return jsonify({
+            "error": "PIN must contain 4 to 8 digits"
+        }), 400
+
+    try:
+        existing_pin = get_private_pin()
+
+        if existing_pin:
+            return jsonify({
+                "error": "Private PIN is already set"
+            }), 409
+
+        pin_hash = generate_password_hash(pin)
+
+        save_private_pin(pin_hash)
+
+        return jsonify({
+            "message": "Private PIN created successfully"
+        })
+
+    except Exception as e:
+        print("Private PIN setup error:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+        
+@app.route("/private-pin/verify", methods=["POST"])
+def verify_private_pin():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "error": "JSON data is required"
+        }), 400
+
+    pin = str(data.get("pin", "")).strip()
+
+    if not pin:
+        return jsonify({
+            "error": "PIN is required"
+        }), 400
+
+    try:
+        saved_pin_hash = get_private_pin()
+
+        if not saved_pin_hash:
+            return jsonify({
+                "error": "Private PIN has not been set"
+            }), 404
+
+        if not check_password_hash(
+            saved_pin_hash,
+            pin
+        ):
+            return jsonify({
+                "error": "Incorrect PIN"
+            }), 401
+
+        return jsonify({
+            "message": "PIN verified successfully"
+        })
+
+    except Exception as e:
+        print("Private PIN verification error:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 @app.route("/chat", methods=["POST"])
 def chat():
 
@@ -248,6 +438,7 @@ def chat():
     user_message = data.get("message")
     memory_enabled = data.get("memory_enabled", True)
     chat_id = data.get("chat_id", 1)
+    private_mode = data.get("private_mode", False)
 
     if not user_message:
 
@@ -261,7 +452,26 @@ def chat():
         # Get previous conversation BEFORE
         # saving the current message
         # ------------------------------------------
+        # Save useful personal facts as long-term memory
+        if memory_enabled and not private_mode:
+            memory_patterns = [
+               r"\bmy name is\b",
+               r"\bi live in\b",
+               r"\bmy favorite\b",
+               r"\bmy favourite\b",
+               r"\bremember that\b",
+            ]   
 
+            if any(
+                re.search(pattern, user_message, re.IGNORECASE)
+                for pattern in memory_patterns
+         ):
+                save_memory(user_message)
+    # Load long-term memory only for normal chats
+        if memory_enabled and not private_mode:
+            long_term_memories = get_memories()
+        else:
+            long_term_memories = []
         if memory_enabled:
             previous_messages = get_messages(chat_id)
         else:
@@ -290,7 +500,14 @@ Previous conversation:
             prompt += "\n".join(conversation)
         else:
             prompt += "No previous conversation."
+                # Add long-term memories
+        if long_term_memories:
+            prompt += "\n\nLong-term memories about the user:\n"
 
+            prompt += "\n".join(
+                f"- {memory}"
+                for memory in long_term_memories
+            )
         prompt += f"""
 
 User's latest message:
