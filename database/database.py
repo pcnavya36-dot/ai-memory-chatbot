@@ -43,6 +43,18 @@ def create_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Add user_id column to old chats table if missing
+    cursor.execute("PRAGMA table_info(chats)")
+    chat_columns = [
+        column[1]
+        for column in cursor.fetchall()
+    ]
+
+    if "user_id" not in chat_columns:
+        cursor.execute("""
+            ALTER TABLE chats
+            ADD COLUMN user_id INTEGER
+        """)
     # Check existing chats columns
     cursor.execute("PRAGMA table_info(chats)")
 
@@ -92,6 +104,17 @@ def create_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TIMESTAMP NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     # ------------------------------------------
 # Long-term AI memory
 # ------------------------------------------
@@ -102,6 +125,19 @@ def create_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Add user_id column to old memories table if missing
+    cursor.execute("PRAGMA table_info(memories)")
+
+    memory_columns = [
+        column[1]
+        for column in cursor.fetchall()
+    ]
+
+    if "user_id" not in memory_columns:
+        cursor.execute("""
+            ALTER TABLE memories
+            ADD COLUMN user_id INTEGER
+        """)
             # ------------------------------------------
     # Private chat security
     # ------------------------------------------
@@ -158,7 +194,8 @@ def save_chat(
     chat_id,
     title,
     pinned=None,
-    is_private=None
+    is_private=None,
+    user_id=None
 ):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -166,7 +203,7 @@ def save_chat(
     # Get existing chat status
     cursor.execute(
         """
-        SELECT pinned, is_private
+        SELECT pinned, is_private, user_id
         FROM chats
         WHERE id = ?
         """,
@@ -176,13 +213,17 @@ def save_chat(
     existing_chat = cursor.fetchone()
 
     if existing_chat:
-        current_pinned, current_private = existing_chat
+        current_pinned, current_private, current_user_id = existing_chat
 
         if pinned is None:
             pinned = current_pinned
 
         if is_private is None:
             is_private = current_private
+
+        if user_id is None:
+            user_id = current_user_id
+
     else:
         if pinned is None:
             pinned = 0
@@ -196,41 +237,50 @@ def save_chat(
             id,
             title,
             pinned,
-            is_private
+            is_private,
+            user_id
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             pinned = excluded.pinned,
-            is_private = excluded.is_private
+            is_private = excluded.is_private,
+            user_id = excluded.user_id
         """,
         (
             chat_id,
             title,
             pinned,
-            is_private
+            is_private,
+            user_id
         )
     )
 
     conn.commit()
     conn.close()
-def save_memory(memory):
+def save_memory(memory, user_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        INSERT OR IGNORE INTO memories (memory)
-        VALUES (?)
+        INSERT OR IGNORE INTO memories (
+            memory,
+            user_id
+        )
+        VALUES (?, ?)
         """,
-        (memory,)
+        (
+            memory,
+            user_id
+        )
     )
 
     conn.commit()
     conn.close()
 
 
-def get_memories():
+def get_memories(user_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
@@ -238,15 +288,18 @@ def get_memories():
         """
         SELECT memory
         FROM memories
+        WHERE user_id = ?
         ORDER BY id
-        """
+        """,
+        (user_id,)
     )
 
     rows = cursor.fetchall()
+
     conn.close()
 
     return [row[0] for row in rows]
-def get_chats():
+def get_chats(user_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
@@ -254,8 +307,10 @@ def get_chats():
         """
         SELECT id, title, pinned, is_private
         FROM chats
+        WHERE user_id = ?
         ORDER BY id
-        """
+        """,
+        (user_id,)
     )
 
     chats = cursor.fetchall()
@@ -299,18 +354,24 @@ def save_message(chat_id, role, message):
     conn.commit()
     conn.close()
 
-def get_messages(chat_id):
+def get_messages(chat_id, user_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     cursor.execute(
         """
-        SELECT role, message
+        SELECT messages.role, messages.message
         FROM messages
-        WHERE chat_id = ?
-        ORDER BY id
+        INNER JOIN chats
+            ON messages.chat_id = chats.id
+        WHERE messages.chat_id = ?
+          AND chats.user_id = ?
+        ORDER BY messages.id
         """,
-        (chat_id,)
+        (
+            chat_id,
+            user_id
+        )
     )
 
     messages = cursor.fetchall()
@@ -318,8 +379,6 @@ def get_messages(chat_id):
     conn.close()
 
     return messages
-
-
 def clear_messages(chat_id=None):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -373,6 +432,89 @@ def get_user_by_email(email):
     conn.close()
 
     return user
+
+def create_password_reset_token(
+    user_id,
+    token_hash,
+    expires_at
+):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO password_reset_tokens (
+            user_id,
+            token_hash,
+            expires_at
+        )
+        VALUES (?, ?, ?)
+        """,
+        (
+            user_id,
+            token_hash,
+            expires_at
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_password_reset_token(token_hash):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT id, user_id, expires_at, used
+        FROM password_reset_tokens
+        WHERE token_hash = ?
+        """,
+        (token_hash,)
+    )
+
+    token = cursor.fetchone()
+
+    conn.close()
+    return token
+
+
+def mark_password_reset_token_used(token_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE password_reset_tokens
+        SET used = 1
+        WHERE id = ?
+        """,
+        (token_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def update_user_password(user_id, password_hash):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET password_hash = ?
+        WHERE id = ?
+        """,
+        (
+            password_hash,
+            user_id
+        )
+    )
+
+    conn.commit()
+    conn.close()
 
 
 if __name__ == "__main__":

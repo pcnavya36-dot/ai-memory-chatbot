@@ -134,16 +134,44 @@ function App() {
   const [loggedIn, setLoggedIn] = useState(
     () => localStorage.getItem("loggedIn") === "true"
   );
-
   const [userName, setUserName] = useState(
     () => localStorage.getItem("userName") || ""
   );
+
+  const [userId, setUserId] = useState(
+    () => {
+      const savedUserId =
+        localStorage.getItem("userId");
+
+      return savedUserId
+        ? Number(savedUserId)
+        : null;
+    }
+  );
   const [authMode, setAuthMode] = useState("login");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetToken, setResetToken] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const [copiedId, setCopiedId] = useState(null);
+  useEffect(() => {
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const token = params.get("token");
+
+    if (token) {
+      setResetToken(token);
+      setShowResetPassword(true);
+      setShowAuth(false);
+      setShowForgotPassword(false);
+    }
+  }, []);
 
   /* ================================
    LOAD SAVED CHATS
@@ -154,7 +182,7 @@ function App() {
       try {
         setIsThinking(true);
         const response = await fetch(
-          "http://127.0.0.1:5000/chats"
+          `http://10.246.229.19:5000/chats?user_id=${userId}`
         );
 
         if (!response.ok) {
@@ -183,8 +211,11 @@ function App() {
       }
     };
 
-    loadChats();
-  }, []);
+    if (userId) {
+      loadChats();
+    }
+
+  }, [userId]);
   /* ================================
    LOAD SAVED MESSAGES
 ================================= */
@@ -193,7 +224,7 @@ function App() {
     const loadMessages = async () => {
       try {
         const response = await fetch(
-          `http://127.0.0.1:5000/messages?chat_id=${activeChat}`
+          `http://10.246.229.19:5000/messages?chat_id=${activeChat}&user_id=${userId}`
         );
 
         if (!response.ok) {
@@ -218,9 +249,124 @@ function App() {
       }
     };
 
-    loadMessages();
-  }, [activeChat]);
+    if (activeChat && userId) {
+      loadMessages();
+    } else {
+      setMessages([]);
+    }
 
+  }, [activeChat, userId]);
+
+  const handleForgotPassword = async () => {
+    if (!authEmail.trim()) {
+      alert("Enter your email address");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://10.246.229.19:5000/forgot-password",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: authEmail.trim(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(
+          data.error ||
+          "Unable to process password reset request"
+        );
+        return;
+      }
+
+      alert(
+        data.message ||
+        "If an account exists, a password reset link has been sent."
+      );
+
+      setShowForgotPassword(false);
+    } catch (error) {
+      console.error(
+        "Forgot password error:",
+        error
+      );
+
+      alert("Could not connect to backend");
+    }
+  };
+  const handleResetPassword = async () => {
+    if (!resetToken) {
+      alert("Invalid or missing reset link");
+      return;
+    }
+
+    if (!newPassword.trim()) {
+      alert("Enter your new password");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://10.246.229.19:5000/reset-password",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            token: resetToken,
+            new_password: newPassword,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(
+          data.error ||
+          "Unable to reset password"
+        );
+        return;
+      }
+
+      alert("Password reset successful. Please login.");
+
+      setNewPassword("");
+      setResetToken("");
+      setShowResetPassword(false);
+
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname
+      );
+
+      setAuthMode("login");
+      setShowAuth(true);
+
+    } catch (error) {
+      console.error(
+        "Reset password error:",
+        error
+      );
+
+      alert("Could not connect to backend");
+    }
+  };
   const handleAuth = async () => {
     if (!authEmail.trim() || !authPassword) {
       alert("Enter email and password");
@@ -251,7 +397,7 @@ function App() {
           };
 
       const response = await fetch(
-        `http://127.0.0.1:5000/${endpoint}`,
+        `http://10.246.229.19:5000/${endpoint}`,
         {
           method: "POST",
           headers: {
@@ -271,8 +417,17 @@ function App() {
 
       setLoggedIn(true);
       setUserName(data.user.name);
+      setUserId(data.user.id);
+      setChats([]);
+      setMessages([]);
+      setActiveChat(null);
+      localStorage.removeItem("activeChat");
       localStorage.setItem("loggedIn", "true");
       localStorage.setItem("userName", data.user.name);
+      localStorage.setItem(
+        "userId",
+        String(data.user.id)
+      );
       setShowAuth(false);
 
       setAuthName("");
@@ -327,7 +482,7 @@ function App() {
 
       try {
         await fetch(
-          "http://127.0.0.1:5000/chats",
+          "http://10.246.229.19:5000/chats",
           {
             method: "POST",
             headers: {
@@ -336,6 +491,7 @@ function App() {
             body: JSON.stringify({
               id: activeChat,
               title: newTitle,
+              user_id: userId,
             }),
           }
         );
@@ -367,7 +523,7 @@ function App() {
     try {
       // Send message to Flask backend
       const response = await fetch(
-        "http://127.0.0.1:5000/chat",
+        "http://10.246.229.19:5000/chat",
         {
           method: "POST",
           headers: {
@@ -378,6 +534,7 @@ function App() {
             memory_enabled: memoryOn,
             chat_id: activeChat,
             private_mode: privateMode,
+            user_id: userId,
           }),
         }
       );
@@ -460,7 +617,7 @@ function App() {
   const clearMemory = async () => {
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/messages",
+        "http://10.246.229.19:5000/messages",
         {
           method: "DELETE",
         }
@@ -510,7 +667,7 @@ function App() {
     };
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/chats",
+        "http://10.246.229.19:5000/chats",
         {
           method: "POST",
           headers: {
@@ -519,6 +676,7 @@ function App() {
           body: JSON.stringify({
             id: id,
             title: "New conversation",
+            user_id: userId,
           }),
         }
       );
@@ -573,7 +731,7 @@ function App() {
   const deleteChat = async (id) => {
     try {
       const response = await fetch(
-        `http://127.0.0.1:5000/messages/${id}`,
+        `http://10.246.229.19:5000/messages/${id}`,
         {
           method: "DELETE",
         }
@@ -650,7 +808,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/chats",
+        "http://10.246.229.19:5000/chats",
         {
           method: "POST",
           headers: {
@@ -659,6 +817,7 @@ function App() {
           body: JSON.stringify({
             id: id,
             title: newTitle,
+            user_id: userId,
           }),
         }
       );
@@ -704,7 +863,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/chats",
+        "http://10.246.229.19:5000/chats",
         {
           method: "POST",
           headers: {
@@ -714,6 +873,7 @@ function App() {
             id: currentChat.id,
             title: currentChat.title,
             pinned: newPinned,
+            user_id: userId,
           }),
         }
       );
@@ -754,7 +914,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/chats",
+        "http://10.246.229.19:5000/chats",
         {
           method: "POST",
           headers: {
@@ -764,6 +924,7 @@ function App() {
             id: currentChat.id,
             title: currentChat.title,
             is_private: newPrivate,
+            user_id: userId,
           }),
         }
       );
@@ -806,7 +967,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/private-pin/verify",
+        "http://10.246.229.19:5000/private-pin/verify",
         {
           method: "POST",
           headers: {
@@ -850,7 +1011,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/private-pin/setup",
+        "http://10.246.229.19:5000/private-pin/setup",
         {
           method: "POST",
           headers: {
@@ -1035,6 +1196,19 @@ function App() {
         <button
           className="new-chat"
           onClick={newChat}
+          style={{
+            background:
+              "linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899)",
+            color: "white",
+            border: "none",
+            borderRadius: "12px",
+            padding: "11px 14px",
+            fontWeight: "700",
+            cursor: "pointer",
+            boxShadow:
+              "0 6px 18px rgba(139, 92, 246, 0.25)",
+            transition: "all 0.25s ease",
+          }}
         >
 
           <Plus size={18} />
@@ -1271,6 +1445,21 @@ function App() {
               <button
                 className="section-title"
                 onClick={() => setShowPrivateLock(true)}
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  background:
+                    "linear-gradient(135deg, #06b6d4, #6366f1, #a855f7)",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "12px",
+                  fontWeight: "700",
+                  fontSize: "14px",
+                  letterSpacing: "1px",
+                  cursor: "pointer",
+                  boxShadow:
+                    "0 6px 18px rgba(99, 102, 241, 0.25)",
+                }}
               >
                 🔒 PRIVATE CHATS
               </button>
@@ -1330,6 +1519,13 @@ function App() {
             onClick={() =>
               setShowMemory(true)
             }
+            style={{
+              borderRadius: "12px",
+              border: "1px solid rgba(139, 92, 246, 0.25)",
+              background: "rgba(139, 92, 246, 0.08)",
+              color: "inherit",
+              transition: "all 0.25s ease",
+            }}
           >
 
             <Brain size={18} />
@@ -1898,6 +2094,18 @@ function App() {
             <button
               className="send-button"
               onClick={sendMessage}
+              style={{
+                background:
+                  "linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899)",
+                color: "white",
+                border: "none",
+                borderRadius: "12px",
+                padding: "10px",
+                cursor: "pointer",
+                boxShadow:
+                  "0 6px 18px rgba(139, 92, 246, 0.3)",
+                transition: "all 0.25s ease",
+              }}
             >
 
               <Send size={17} />
@@ -1948,8 +2156,25 @@ function App() {
 
             <div className="modal-header">
               <div>
-                <h2>Private Chats</h2>
-                <p>
+                <h2
+                  style={{
+                    color: "#1f2937",
+                    fontWeight: "700",
+                    fontSize: "28px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Private Chats
+                </h2>
+
+                <p
+                  style={{
+                    color: "#6b7280",
+                    fontSize: "16px",
+                    fontWeight: "500",
+                    marginTop: "0",
+                  }}
+                >
                   Enter your PIN to unlock private chats
                 </p>
               </div>
@@ -1966,6 +2191,18 @@ function App() {
 
             <input
               className="auth-input"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "#f8fafc",
+                border: "1px solid rgba(99, 102, 241, 0.35)",
+                color: "#1f2937",
+                borderRadius: "12px",
+                padding: "12px 14px",
+                outline: "none",
+                fontSize: "16px",
+                boxShadow: "0 4px 14px rgba(99, 102, 241, 0.08)",
+              }}
               type="password"
               inputMode="numeric"
               maxLength={8}
@@ -1979,6 +2216,19 @@ function App() {
             <button
               className="auth-submit"
               onClick={unlockPrivateChats}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                background:
+                  "linear-gradient(135deg, #06b6d4, #6366f1, #a855f7)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "12px",
+                fontWeight: "700",
+                cursor: "pointer",
+                boxShadow:
+                  "0 6px 20px rgba(99, 102, 241, 0.35)",
+              }}
             >
               <Lock size={16} />
               Unlock Private Chats
@@ -1989,13 +2239,19 @@ function App() {
               style={{
                 marginTop: "10px",
                 width: "100%",
-                padding: "10px",
+                padding: "11px 14px",
+                background: "rgba(99, 102, 241, 0.08)",
+                color: "#4f46e5",
+                border: "1px solid rgba(99, 102, 241, 0.3)",
+                borderRadius: "12px",
+                fontWeight: "600",
+                fontSize: "14px",
                 cursor: "pointer",
+                transition: "all 0.25s ease",
               }}
             >
               First time? Create Private PIN
             </button>
-
           </div>
         </div>
       )}
@@ -2033,8 +2289,11 @@ function App() {
             className="profile-option"
             onClick={() => {
               setLoggedIn(false);
+              setUserId(null);
+              setChats([]);
               localStorage.removeItem("loggedIn");
               localStorage.removeItem("userName");
+              localStorage.removeItem("userId");
               setShowProfile(false);
             }}
           >
@@ -2439,17 +2698,23 @@ function App() {
 
         <div className="overlay">
 
-          <div className="modal auth-modal">
-
+          <div
+            className="modal auth-modal"
+            style={{
+              background:
+                "linear-gradient(145deg, rgba(20, 18, 40, 0.96), rgba(12, 15, 32, 0.96))",
+              border: "1px solid rgba(139, 92, 246, 0.28)",
+              borderRadius: "22px",
+              boxShadow:
+                "0 20px 60px rgba(0, 0, 0, 0.35), 0 0 35px rgba(139, 92, 246, 0.12)",
+              backdropFilter: "blur(18px)",
+            }}
+          >
             <button
               className="auth-close"
-              onClick={() =>
-                setShowAuth(false)
-              }
+              onClick={() => setShowAuth(false)}
             >
-
               <X size={17} />
-
             </button>
 
 
@@ -2469,7 +2734,13 @@ function App() {
             </h2>
 
 
-            <p className="auth-description">
+            <p className="auth-description"
+              style={{
+                color: "#ffffff",
+                opacity: 0.9,
+                fontWeight: "500",
+              }}
+            >
 
               {authMode === "login"
                 ? "Sign in to continue your personalized AI experience."
@@ -2479,8 +2750,20 @@ function App() {
             {authMode === "signup" && (
               <input
                 className="auth-input"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(139,92,246,0.35)",
+                  color: "var(--text-primary)",
+                  borderRadius: "12px",
+                  padding: "12px 14px",
+                  outline: "none",
+                  boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+                }}
                 type="text"
                 placeholder="Your name"
+
                 value={authName}
                 onChange={(e) =>
                   setAuthName(e.target.value)
@@ -2491,6 +2774,16 @@ function App() {
 
             <input
               className="auth-input"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(139,92,246,0.35)",
+                color: "#ffffff",
+                WebkitTextFillColor: "#ffffff",
+                borderRadius: "12px",
+                padding: "12px 14px",
+                outline: "none",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+              }}
               type="email"
               placeholder="Email address"
               value={authEmail}
@@ -2501,6 +2794,15 @@ function App() {
 
             <input
               className="auth-input"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(139,92,246,0.35)",
+                color: "var(--text-primary)",
+                borderRadius: "12px",
+                padding: "12px 14px",
+                outline: "none",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+              }}
               type="password"
               placeholder="Password"
               value={authPassword}
@@ -2508,10 +2810,47 @@ function App() {
                 setAuthPassword(e.target.value)
               }
             />
+            {authMode === "login" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAuth(false);
+                  setShowForgotPassword(true);
+                }}
+                style={{
+                  marginTop: "8px",
+                  marginBottom: "12px",
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: "none",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #8b5cf6, #ec4899)",
+                  color: "white",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                Forgot password?
+              </button>
+            )}
 
             <button
               className="auth-submit"
               onClick={handleAuth}
+              style={{
+                background:
+                  "linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899)",
+                color: "white",
+                border: "none",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                fontWeight: "700",
+                cursor: "pointer",
+                boxShadow:
+                  "0 6px 18px rgba(139, 92, 246, 0.25)",
+                transition: "all 0.25s ease",
+                transform: "translateY(0)",
+              }}
             >
               {authMode === "login"
                 ? "Login"
@@ -2522,6 +2861,19 @@ function App() {
 
             <button
               className="auth-switch"
+              style={{
+                marginTop: "10px",
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid rgba(139, 92, 246, 0.35)",
+                borderRadius: "10px",
+                background: "rgba(139, 92, 246, 0.08)",
+                color: "#ffffff",
+                fontWeight: "700",
+                opacity: 1,
+
+                cursor: "pointer",
+              }}
               onClick={() =>
                 setAuthMode(
                   authMode === "login"
@@ -2541,6 +2893,109 @@ function App() {
 
         </div>
 
+      )}
+      {showForgotPassword && (
+        <div className="overlay">
+          <div className="modal auth-modal">
+
+            <button
+              className="auth-close"
+              onClick={() => setShowForgotPassword(false)}
+            >
+              <X size={17} />
+            </button>
+
+            <div className="auth-icon">
+              <Sparkles size={23} />
+            </div>
+
+            <h2>Reset your password</h2>
+
+            <p className="auth-description">
+              Enter your email and we&apos;ll send you a secure
+              password reset link.
+            </p>
+
+            <input
+              className="auth-input"
+              type="email"
+              placeholder="Email address"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+            />
+
+            <button
+              className="auth-submit"
+              type="button"
+              onClick={handleForgotPassword}
+              style={{
+                background:
+                  "linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899)",
+                border: "none",
+              }}
+            >
+              Send reset link
+            </button>
+
+            <button
+              className="auth-switch"
+              type="button"
+
+              onClick={() => {
+                setShowForgotPassword(false);
+                setShowAuth(true);
+              }}
+            >
+              Back to Login
+            </button>
+
+          </div>
+        </div>
+      )}
+      {showResetPassword && (
+        <div className="overlay">
+          <div className="modal auth-modal">
+
+            <button
+              className="auth-close"
+              onClick={() => setShowResetPassword(false)}
+            >
+              <X size={17} />
+            </button>
+
+            <div className="auth-icon">
+              <Sparkles size={23} />
+            </div>
+
+            <h2>Set a new password</h2>
+
+            <p className="auth-description">
+              Enter a new password for your account.
+            </p>
+
+            <input
+              className="auth-input"
+              type="password"
+              placeholder="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+
+            <button
+              className="auth-submit"
+              type="button"
+              onClick={handleResetPassword}
+              style={{
+                background:
+                  "linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899)",
+                border: "none",
+              }}
+            >
+              Update password
+            </button>
+
+          </div>
+        </div>
       )}
 
     </div>
