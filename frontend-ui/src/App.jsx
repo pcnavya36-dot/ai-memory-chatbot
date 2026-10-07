@@ -182,7 +182,7 @@ function App() {
       try {
         setIsThinking(true);
         const response = await fetch(
-          `http://10.246.229.19:5000/chats?user_id=${userId}`
+          `https://ai-memory-chatbot.onrender.com/chats?user_id=${userId}`
         );
 
         if (!response.ok) {
@@ -224,7 +224,7 @@ function App() {
     const loadMessages = async () => {
       try {
         const response = await fetch(
-          `http://10.246.229.19:5000/messages?chat_id=${activeChat}&user_id=${userId}`
+          `https://ai-memory-chatbot.onrender.com/messages?chat_id=${activeChat}&user_id=${userId}`
         );
 
         if (!response.ok) {
@@ -265,7 +265,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/forgot-password",
+        "https://ai-memory-chatbot.onrender.com/forgot-password",
         {
           method: "POST",
           headers: {
@@ -320,7 +320,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/reset-password",
+        "https://ai-memory-chatbot.onrender.com/reset-password",
         {
           method: "POST",
           headers: {
@@ -397,7 +397,7 @@ function App() {
           };
 
       const response = await fetch(
-        `http://10.246.229.19:5000/${endpoint}`,
+        `https://ai-memory-chatbot.onrender.com/${endpoint}`,
         {
           method: "POST",
           headers: {
@@ -482,7 +482,7 @@ function App() {
 
       try {
         await fetch(
-          "http://10.246.229.19:5000/chats",
+          "https://ai-memory-chatbot.onrender.com/chats",
           {
             method: "POST",
             headers: {
@@ -523,7 +523,7 @@ function App() {
     try {
       // Send message to Flask backend
       const response = await fetch(
-        "http://10.246.229.19:5000/chat",
+        "https://ai-memory-chatbot.onrender.com/chat",
         {
           method: "POST",
           headers: {
@@ -617,7 +617,7 @@ function App() {
   const clearMemory = async () => {
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/messages",
+        "https://ai-memory-chatbot.onrender.com/messages",
         {
           method: "DELETE",
         }
@@ -667,7 +667,7 @@ function App() {
     };
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/chats",
+        "https://ai-memory-chatbot.onrender.com/chats",
         {
           method: "POST",
           headers: {
@@ -731,7 +731,7 @@ function App() {
   const deleteChat = async (id) => {
     try {
       const response = await fetch(
-        `http://10.246.229.19:5000/messages/${id}`,
+        `https://ai-memory-chatbot.onrender.com/messages/${id}`,
         {
           method: "DELETE",
         }
@@ -808,7 +808,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/chats",
+        "https://ai-memory-chatbot.onrender.com/chats",
         {
           method: "POST",
           headers: {
@@ -863,7 +863,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/chats",
+        "https://ai-memory-chatbot.onrender.com/chats",
         {
           method: "POST",
           headers: {
@@ -914,7 +914,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/chats",
+        "https://ai-memory-chatbot.onrender.com/chats",
         {
           method: "POST",
           headers: {
@@ -967,7 +967,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/private-pin/verify",
+        "https://ai-memory-chatbot.onrender.com/private-pin/verify",
         {
           method: "POST",
           headers: {
@@ -1011,7 +1011,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://10.246.229.19:5000/private-pin/setup",
+        "https://ai-memory-chatbot.onrender.com/private-pin/setup",
         {
           method: "POST",
           headers: {
